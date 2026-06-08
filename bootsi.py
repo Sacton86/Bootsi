@@ -128,15 +128,21 @@ class FormatCopyWorker(QThread):
             # 3. Clear existing files if skipping format
             if self.skip_format:
                 self.status.emit("Deleting existing files from USB...")
-                subprocess.run(["sudo", "sync"]) # Ensure previous writes are flushed
+                if platform.system() != "Windows":
+                    subprocess.run(["sudo", "sync"])
                 for item in os.listdir(target_mount):
                     item_path = os.path.join(target_mount, item)
                     try:
-                        # Use sudo rm to ensure permissions don't block deletion
-                        if os.path.isfile(item_path) or os.path.islink(item_path):
-                            subprocess.run(["sudo", "rm", "-f", item_path])
-                        elif os.path.isdir(item_path):
-                            subprocess.run(["sudo", "rm", "-rf", item_path])
+                        if platform.system() == "Windows":
+                            if os.path.isfile(item_path) or os.path.islink(item_path):
+                                os.remove(item_path)
+                            elif os.path.isdir(item_path):
+                                shutil.rmtree(item_path)
+                        else:
+                            if os.path.isfile(item_path) or os.path.islink(item_path):
+                                subprocess.run(["sudo", "rm", "-f", item_path])
+                            elif os.path.isdir(item_path):
+                                subprocess.run(["sudo", "rm", "-rf", item_path])
                     except Exception as e:
                         print(f"Failed to delete {item_path}: {e}")
                 self.progress.emit(30)
@@ -145,15 +151,15 @@ class FormatCopyWorker(QThread):
             self.status.emit(f"Copying assets to {target_dir}...")
             self.progress.emit(50)
 
-            # Ensure parent exists
-            subprocess.run(["sudo", "mkdir", "-p", target_dir])
-            
-            # Use sudo cp to ensure we can write to the mount
-            # shutil.copytree might fail if permissions on the mount are weird
-            cmd = ["sudo", "cp", "-r", os.path.join(self.source_path, "."), target_dir]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise Exception(f"Copy failed: {result.stderr}")
+            if platform.system() == "Windows":
+                os.makedirs(target_dir, exist_ok=True)
+                shutil.copytree(self.source_path, target_dir, dirs_exist_ok=True)
+            else:
+                subprocess.run(["sudo", "mkdir", "-p", target_dir])
+                cmd = ["sudo", "cp", "-r", os.path.join(self.source_path, "."), target_dir]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    raise Exception(f"Copy failed: {result.stderr}")
 
 
             # 3. Handle Custom Logo if provided
