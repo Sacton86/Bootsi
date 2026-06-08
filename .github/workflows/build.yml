@@ -1,0 +1,42 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install runtime dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build exe
+        run: pyinstaller bootsi.spec
+
+      - name: Package assets
+        shell: powershell
+        run: |
+          Compress-Archive -Path "G1", "G2", "G3", "G4", "FACTORY-CUSTOMIZATION", "Impact Logo.png" -DestinationPath bootsi-assets.zip
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Bootsi ${{ github.ref_name }}
+          files: |
+            dist/Bootsi.exe
+            bootsi-assets.zip
+          generate_release_notes: true

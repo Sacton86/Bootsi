@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+venv/
+.venv/
+
+# PyInstaller build output
+dist/
+build/
+*.spec.bak
+
+# Dev / local artifacts
+screenshots/
+wallpapers/
+Bootsi_Dev_Package.zip
+bootsi_overview.html
+launch command.txt
+Pasted image.png
+
+# Claude Code
+.claude/
