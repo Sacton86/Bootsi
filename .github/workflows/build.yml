@@ -33,13 +33,13 @@ jobs:
       - name: Package assets
         shell: powershell
         run: |
-          Compress-Archive -Path "G1", "G2", "G3", "G4", "FACTORY-CUSTOMIZATION", "Impact Logo.png" -DestinationPath bootsi-assets.zip
+          Copy-Item "dist\Bootsi.exe" "Bootsi.exe"
+          Compress-Archive -Path "G1", "G2", "G3", "G4", "FACTORY-CUSTOMIZATION", "Impact Logo.png", "kirbyicon.png", "Bootsi.exe" -DestinationPath bootsi-assets.zip
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           name: Bootsi ${{ github.ref_name }}
           files: |
-            dist/Bootsi.exe
             bootsi-assets.zip
           generate_release_notes: true

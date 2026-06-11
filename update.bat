@@ -34,25 +34,18 @@ if not exist "%INSTALL_DIR%\Bootsi.exe" (
 echo  Updating Bootsi in %INSTALL_DIR%...
 echo.
 
-echo  [1/4] Stopping any running instances...
+echo  [1/3] Stopping any running instances...
 taskkill /f /im Bootsi.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 
-echo  [2/4] Downloading latest Bootsi.exe...
-curl -L --progress-bar -o "%INSTALL_DIR%\Bootsi.exe" "%BASE_URL%/Bootsi.exe"
-if %errorlevel% neq 0 (
-    echo  [ERROR] Failed to download Bootsi.exe
-    pause & exit /b 1
-)
-
-echo  [3/4] Downloading latest assets...
+echo  [2/3] Downloading latest assets (includes Bootsi.exe)...
 curl -L --progress-bar -o "%TEMP%\bootsi-assets.zip" "%BASE_URL%/bootsi-assets.zip"
 if %errorlevel% neq 0 (
     echo  [ERROR] Failed to download bootsi-assets.zip
     pause & exit /b 1
 )
 
-echo  [4/4] Extracting assets...
+echo  [3/3] Extracting...
 powershell -NoProfile -Command "Expand-Archive -Path '%TEMP%\bootsi-assets.zip' -DestinationPath '%INSTALL_DIR%' -Force"
 if %errorlevel% neq 0 (
     echo  [ERROR] Failed to extract assets
