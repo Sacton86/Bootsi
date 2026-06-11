@@ -8,11 +8,11 @@ import ctypes
 from PIL import Image
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget,
-    QLabel, QComboBox, QPushButton, QMessageBox, QProgressBar, 
-    QStatusBar, QFileDialog, QFrame
+    QLabel, QComboBox, QPushButton, QMessageBox, QProgressBar,
+    QStatusBar, QFileDialog, QFrame, QCheckBox
 )
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QPixmap, QFont
+from PySide6.QtGui import QPixmap, QFont, QIcon
 
 def get_resource_path(relative_path):
     if getattr(sys, 'frozen', False):
@@ -27,13 +27,14 @@ class FormatCopyWorker(QThread):
     status = Signal(str)
     finished = Signal(bool, str)
 
-    def __init__(self, drive, fs_type, source_path, custom_logo=None, skip_format=False):
+    def __init__(self, drive, fs_type, source_path, custom_logo=None, skip_format=False, duplicate_logo_as_wallpaper=False):
         super().__init__()
         self.drive = drive
         self.fs_type = fs_type
         self.source_path = source_path
         self.custom_logo = custom_logo
         self.skip_format = skip_format
+        self.duplicate_logo_as_wallpaper = duplicate_logo_as_wallpaper
 
     def run(self):
         temp_mount = None
@@ -162,14 +163,12 @@ class FormatCopyWorker(QThread):
                     raise Exception(f"Copy failed: {result.stderr}")
 
 
-            # 3. Handle Custom Logo if provided
+            # 3. Handle Custom Logo and/or Duplicate as Wallpaper
             if self.custom_logo and os.path.exists(self.custom_logo):
                 self.status.emit("Applying custom logo...")
-                # Extract target resolution from folder name
-                # Folder name: 10x10_160x160
                 folder_name = os.path.basename(self.source_path)
                 if "_" in folder_name:
-                    res_part = folder_name.split("_")[-1] # "160x160"
+                    res_part = folder_name.split("_")[-1]
                     if "x" in res_part:
                         try:
                             tw, th = map(int, res_part.split("x"))
@@ -183,8 +182,14 @@ class FormatCopyWorker(QThread):
                             ox, oy = (tw - nw) // 2, (th - nh) // 2
                             bg.paste(resized_logo, (ox, oy), resized_logo)
                             bg.save(boot_path, "PNG")
+                            if self.duplicate_logo_as_wallpaper:
+                                bg.save(os.path.join(target_dir, "wallpaper.png"), "PNG")
                         except Exception as e:
                             print(f"Failed to apply custom logo: {e}")
+            elif self.duplicate_logo_as_wallpaper:
+                boot_path = os.path.join(target_dir, "boot.png")
+                if os.path.exists(boot_path):
+                    shutil.copy2(boot_path, os.path.join(target_dir, "wallpaper.png"))
 
             if platform.system() != "Windows":
                 self.status.emit("Flushing buffers...")
@@ -208,7 +213,8 @@ class BootsiApp(QMainWindow):
         self.setWindowTitle("Bootsi - Custom Firmware USB Tool")
         self.setMinimumWidth(800)
         self.setMinimumHeight(600)
-        
+        self.setWindowIcon(QIcon(get_resource_path("kirbyicon.png")))
+
         self.base_dir = get_resource_path("")
         self.custom_logo_path = None
         self.default_logo_path = get_resource_path("Impact Logo.png")
@@ -265,6 +271,20 @@ class BootsiApp(QMainWindow):
             QFrame {
                 border: none;
             }
+            QCheckBox {
+                color: #e0e0e0;
+                spacing: 6px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                background-color: #333;
+                border: 1px solid #555;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #27ae60;
+                border: 1px solid #27ae60;
+            }
         """)
 
         # Product Line
@@ -298,6 +318,10 @@ class BootsiApp(QMainWindow):
         self.reset_logo_button = QPushButton("Reset to Default Logo")
         self.reset_logo_button.clicked.connect(self.reset_logo)
         controls_layout.addWidget(self.reset_logo_button)
+
+        self.dup_logo_wallpaper_check = QCheckBox("Duplicate Logo as Wallpaper")
+        self.dup_logo_wallpaper_check.stateChanged.connect(self.update_previews)
+        controls_layout.addWidget(self.dup_logo_wallpaper_check)
 
         # USB
         controls_layout.addStretch()
@@ -451,7 +475,7 @@ class BootsiApp(QMainWindow):
         gen = self.gen_combo.currentData()
         pitch = self.pitch_combo.currentText()
         size_actual = self.size_combo.currentData()
-        
+
         if not gen or not pitch or not size_actual:
             self.wall_preview.setPixmap(QPixmap())
             self.wall_preview.setText("Select size to preview")
@@ -460,19 +484,10 @@ class BootsiApp(QMainWindow):
             return
 
         folder_path = os.path.join(self.base_dir, gen, pitch, size_actual)
-        
-        # Wallpaper
-        wall_path = os.path.join(folder_path, "wallpaper.png")
-        if os.path.exists(wall_path):
-            pix = QPixmap(wall_path)
-            scaled_pix = pix.scaled(self.wall_preview.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.wall_preview.setPixmap(scaled_pix)
-        else:
-            self.wall_preview.clear()
-            self.wall_preview.setText("Wallpaper not found")
-        
-        # Boot (Logo logic)
         logo_to_use = self.custom_logo_path if self.custom_logo_path else self.default_logo_path
+        dup_as_wall = self.dup_logo_wallpaper_check.isChecked()
+
+        # Boot logo preview
         if os.path.exists(logo_to_use):
             try:
                 pix = QPixmap(logo_to_use)
@@ -483,6 +498,28 @@ class BootsiApp(QMainWindow):
         else:
             self.boot_preview.clear()
             self.boot_preview.setText("Logo not found")
+
+        # Wallpaper preview — show logo when checkbox is checked
+        if dup_as_wall:
+            if os.path.exists(logo_to_use):
+                try:
+                    pix = QPixmap(logo_to_use)
+                    scaled_pix = pix.scaled(self.wall_preview.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    self.wall_preview.setPixmap(scaled_pix)
+                except:
+                    self.wall_preview.setText("Error loading logo")
+            else:
+                self.wall_preview.clear()
+                self.wall_preview.setText("Logo not found")
+        else:
+            wall_path = os.path.join(folder_path, "wallpaper.png")
+            if os.path.exists(wall_path):
+                pix = QPixmap(wall_path)
+                scaled_pix = pix.scaled(self.wall_preview.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                self.wall_preview.setPixmap(scaled_pix)
+            else:
+                self.wall_preview.clear()
+                self.wall_preview.setText("Wallpaper not found")
 
     def populate_usbs(self):
         self.usb_combo.clear()
@@ -549,7 +586,7 @@ class BootsiApp(QMainWindow):
                 return
 
         self.start_button.setEnabled(False)
-        self.worker = FormatCopyWorker(target_device, "FAT32", source, self.custom_logo_path, skip_format=skip_format)
+        self.worker = FormatCopyWorker(target_device, "FAT32", source, self.custom_logo_path, skip_format=skip_format, duplicate_logo_as_wallpaper=self.dup_logo_wallpaper_check.isChecked())
         self.worker.progress.connect(self.progress_bar.setValue)
         self.status_bar.showMessage("Starting...")
         self.worker.status.connect(self.status_bar.showMessage)
